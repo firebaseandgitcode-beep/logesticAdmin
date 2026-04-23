@@ -1,14 +1,7 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState } from 'react'
+import { adminApi } from '../lib/api'
 
 const AdminAuthContext = createContext(null)
-
-// The platform owner credentials (Sujay - the one who manages all registered businesses)
-const PLATFORM_ADMIN = {
-  id: 'PLATFORM_ADMIN',
-  name: 'Sujay G P',
-  email: 'sujaygp001@gmail.com',
-  password: 'Admin@1234',
-}
 
 export function AdminAuthProvider({ children }) {
   const [currentAdmin, setCurrentAdmin] = useState(() => {
@@ -17,69 +10,31 @@ export function AdminAuthProvider({ children }) {
       return saved ? JSON.parse(saved) : null
     } catch { return null }
   })
+  const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    if (currentAdmin) {
-      sessionStorage.setItem('admin_portal_user', JSON.stringify(currentAdmin))
-    } else {
-      sessionStorage.removeItem('admin_portal_user')
-    }
-  }, [currentAdmin])
-
-  const login = (email, password) => {
-    if (
-      email === PLATFORM_ADMIN.email &&
-      password === PLATFORM_ADMIN.password
-    ) {
-      setCurrentAdmin(PLATFORM_ADMIN)
-      return { success: true }
-    }
-    return { error: 'Invalid credentials' }
-  }
-
-  const logout = () => setCurrentAdmin(null)
-
-  // Read registered users from the main website's localStorage
-  const getRegisteredUsers = () => {
+  const login = async (username, password) => {
+    setLoading(true)
     try {
-      const saved = localStorage.getItem('logestic_users')
-      return saved ? JSON.parse(saved) : []
-    } catch { return [] }
+      const data = await adminApi.login({ username, password })
+      sessionStorage.setItem('admin_token', data.token)
+      sessionStorage.setItem('admin_portal_user', JSON.stringify(data.admin))
+      setCurrentAdmin(data.admin)
+      return { success: true }
+    } catch (err) {
+      return { error: err.message || 'Login failed' }
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Update a user's status and/or role in the main website's localStorage
-  const updateUser = (userId, updates) => {
-    const users = getRegisteredUsers()
-    const updated = users.map(u => u.id === userId ? { ...u, ...updates } : u)
-    localStorage.setItem('logestic_users', JSON.stringify(updated))
-    return updated
-  }
-
-  // Approve a pending user and grant them superadmin access
-  const approveUser = (userId) => {
-    return updateUser(userId, { role: 'superadmin', status: 'active' })
-  }
-
-  // Suspend a user
-  const suspendUser = (userId) => {
-    return updateUser(userId, { status: 'suspended' })
-  }
-
-  // Reactivate a suspended user
-  const reactivateUser = (userId) => {
-    return updateUser(userId, { status: 'active' })
+  const logout = () => {
+    sessionStorage.removeItem('admin_token')
+    sessionStorage.removeItem('admin_portal_user')
+    setCurrentAdmin(null)
   }
 
   return (
-    <AdminAuthContext.Provider value={{
-      currentAdmin,
-      login,
-      logout,
-      getRegisteredUsers,
-      approveUser,
-      suspendUser,
-      reactivateUser,
-    }}>
+    <AdminAuthContext.Provider value={{ currentAdmin, loading, login, logout }}>
       {children}
     </AdminAuthContext.Provider>
   )
